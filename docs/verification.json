@@ -1,0 +1,159 @@
+{
+  "company_analyses": {
+    "buffer.com": {
+      "job_id": "d1e092dbb404492eb1c3f66a1ae40bc3",
+      "completed_at_utc": "2026-10-19T18:05:36Z",
+      "pages_read": 4,
+      "buyer_roles": [
+        "Creators and newsletter/podcast publishers",
+        "Small business owners",
+        "Agency owners and client social media managers",
+        "Nonprofit communications teams",
+        "University/school social media teams",
+        "Developers building on the Buffer API"
+      ],
+      "industries": [],
+      "markets": [],
+      "company_sizes": [
+        "small teams"
+      ],
+      "use_cases": [
+        "Schedule and queue posts across multiple social platforms",
+        "Manage multiple client channels with per-channel billing",
+        "Route posts through approval workflows and access levels",
+        "Triage and reply to comments from one inbox, including AI-assisted replies",
+        "Analyze performance and export branded reports",
+        "Connect Buffer to Claude/ChatGPT, Zapier, Make or n8n to plan and queue content automatically"
+      ],
+      "evidence_quotes": 5
+    },
+    "cnvrted.com": {
+      "job_id": "4f82893b093f41d68a999f20c72ee9c8",
+      "completed_at_utc": "2026-10-19T17:26:43Z",
+      "pages_read": 5,
+      "buyer_roles": [
+        "Founders",
+        "B2B sales teams",
+        "Service business owners"
+      ],
+      "industries": [],
+      "markets": [],
+      "company_sizes": [],
+      "use_cases": [
+        "Find first buyers by identifying companies that need an offer",
+        "Spot public buying conversations such as requests for tools or recommendations",
+        "Reach the right people for a new offer launch",
+        "Explore and refine a new market",
+        "Build and refine an ICP profile from best customers",
+        "Review sourced signals and prepare relevant outreach"
+      ],
+      "evidence_quotes": 5
+    }
+  },
+  "recommendations": {
+    "slack": {
+      "job_id": "548dcd455a3a48aab2bc58ce60e19656",
+      "completed_at_utc": "2026-10-19T17:58:18Z",
+      "suggestions": 10,
+      "catalog_candidates": 40,
+      "newly_added": 1,
+      "scores_bounded": true,
+      "scores_sorted": true,
+      "platforms": [
+        "slack"
+      ],
+      "top_matches": [
+        {
+          "name": "The GTM Club",
+          "fit": 90,
+          "source": "https://www.thegtmclub.com/join/"
+        },
+        {
+          "name": "RevGenius",
+          "fit": 82,
+          "source": "https://community.revgenius.com/"
+        },
+        {
+          "name": "Instantly Slack Community",
+          "fit": 76,
+          "source": "https://instantly.ai/slack-community"
+        }
+      ]
+    },
+    "discord": {
+      "job_id": "b4def8c213634768a8b84bd61cde57fa",
+      "completed_at_utc": "2026-10-19T17:56:13Z",
+      "suggestions": 9,
+      "catalog_candidates": 29,
+      "newly_added": 0,
+      "scores_bounded": true,
+      "scores_sorted": true,
+      "platforms": [
+        "discord"
+      ],
+      "top_matches": [
+        {
+          "name": "Class of One",
+          "fit": 78,
+          "source": "https://thehiveindex.com/communities/class-of-one/"
+        },
+        {
+          "name": "The SaaS Corner",
+          "fit": 62,
+          "source": "https://thehiveindex.com/communities/the-saas-corner/"
+        },
+        {
+          "name": "SoloFounders",
+          "fit": 60,
+          "source": "https://thehiveindex.com/communities/solo-founders/"
+        }
+      ]
+    },
+    "all": {
+      "job_id": "182a77307ef0416fb0918e12007193fd",
+      "completed_at_utc": "2026-10-19T17:28:17Z",
+      "suggestions": 10,
+      "catalog_candidates": 144,
+      "newly_added": 1,
+      "scores_bounded": true,
+      "scores_sorted": true,
+      "platforms": [
+        "facebook",
+        "forums",
+        "linkedin",
+        "slack"
+      ],
+      "top_matches": [
+        {
+          "name": "The GTM Club",
+          "fit": 90,
+          "source": "https://www.thegtmclub.com/join/"
+        },
+        {
+          "name": "Instantly Slack Community",
+          "fit": 76,
+          "source": "https://instantly.ai/slack-community"
+        },
+        {
+          "name": "RevGenius",
+          "fit": 76,
+          "source": "https://community.revgenius.com/"
+        }
+      ]
+    }
+  },
+  "automated_tests": {
+    "ran": 32,
+    "passed": 32
+  },
+  "browser": {
+    "three_steps": true,
+    "slack_and_discord_logos_loaded": true,
+    "desktop_1280_no_overflow": true,
+    "mobile_390_no_overflow": true,
+    "selected_platform_restored_after_reload": true,
+    "settings_secret_field_empty": true,
+    "exported_slack_json_rows": 10
+  },
+  "catalog_snapshot": 1186
+}
