@@ -268,7 +268,7 @@ def retrieve(profile,records,feedback):
     results.sort(key=lambda x:(-x['score'],x['record']['name']))
     return results,exclusions
 
-def explain(profile,ranked,settings,limit=5):
+def explain(profile,ranked,settings,limit=5,strategy="balanced"):
     # An LLM can rerank only already retrieved records, never supply new identities or links.
     # Broaden the shortlist so a single platform cannot hide other relevant spaces.
     pool=list(ranked[:24]);seen_pool={x['record']['community_id'] for x in pool};counts=collections.Counter()
@@ -281,6 +281,8 @@ def explain(profile,ranked,settings,limit=5):
     short=pool
     prompt=f'''Choose up to {limit} supplied communities for this confirmed company brief and goal. Recommend only useful fits; do not fill a quota with weak matches. Connect the offer, concrete buyer roles, pain points and use cases to the community audience. Prefer specific buyer relevance over generic founder groups; consider referral partners for the partners goal. Include different platforms when they offer equally useful audiences. Respect supplied access notes and role/market restrictions. Unknown membership, activity or promotion permission must stay unknown. Vendor-hosted communities may be adjacent/competing ecosystems; mention that tradeoff when relevant.
 Return {{recommendations:[{{community_id,fit_reason,fit_score:0..100}}]}}. Reasons should be 2 short sentences, no more than 65 words, with a concrete benefit and any material caveat. Fit is a hypothesis. Score anchors: 90-100 means a specific buyer/use-case overlap supported by primary audience evidence; 70-89 a useful role match with some unknowns; 50-69 a broad or conditional fit; below 50 is too weak to recommend. Thin directory evidence alone should not earn 90+. Free and paid communities are equally eligible. Never invent links, policies, prices, counts, channel names or permission. A named membership tier is not proof that it is paid; use only supplied price/access evidence. Fit score is an editorial estimate, not a conversion probability.'''
+    if strategy=='evidence_first':
+        prompt+='\nEvidence-first treatment: prioritize explicit audience evidence for the confirmed buyer roles and concrete use cases. A generic founder/practitioner overlap without explicit buyer evidence must score at most 69. Prefer fewer well-supported matches over broad networking suggestions. Keep the same policy and eligibility exclusions.'
     result=model_json(settings,prompt,{'profile':profile,'candidates':[{'community_id':x['record']['community_id'],'name':x['record']['name'],'topics':x['record']['topics'],'audience':x['record'].get('audience_hypothesis'),'evidence_keywords':x['record'].get('evidence_keywords',[]),'policy':x['record'].get('commercial_policy'),'price_status':x['record']['cost_status'],'access_note':x['record'].get('access_note'),'source_excerpt':x['record'].get('document_text','')[:1600]} for x in short]}) if short else None
     allowed={x['record']['community_id']:x for x in short};chosen=[];seen=set()
     if result:

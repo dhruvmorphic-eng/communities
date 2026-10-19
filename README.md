@@ -53,6 +53,10 @@ The visible **fit /100** is an editorial relevance estimate, not a conversion pr
 
 A separate retrieval score combines buyer/practitioner topic match, TF-IDF text similarity, participation route, destination, evidence completeness, freshness and per-company feedback. It is available under **Evidence & joining details**. Without AI, visible scores use this simpler baseline and are labeled accordingly.
 
+## A/B testing
+
+The app independently assigns full/short company review and balanced/evidence-first recommendation ranking. Open **A/B results** in the footer for completion, clicks and Useful/Hide rates. Assignments and deduplicated events stay in the private local database. These are descriptive metrics; real users and a planned sample are needed before choosing a winner. See [the experiment plan](docs/ab-testing.md).
+
 ## Check
 
 ```sh

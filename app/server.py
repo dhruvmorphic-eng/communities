@@ -8,6 +8,7 @@ import threading
 import urllib.parse
 import storage
 import engine
+import experiments
 from webfetch import request
 
 TOKEN=secrets.token_urlsafe(32)
@@ -32,6 +33,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self.valid_host():return self.send(403,{'error':'Invalid host.'})
         parsed=urllib.parse.urlsplit(self.path);path=parsed.path
         try:
+            if path=='/api/experiments':return self.send(200,experiments.report())
             if path=='/api/status':return self.send(200,{'csrf_token':TOKEN,'settings':storage.public_settings(),'catalog':storage.stats()})
             if path.startswith('/api/jobs/'):
                 job=storage.get_job(path.rsplit('/',1)[-1]);return self.send(200 if job else 404,job or {'error':'Job not found.'})
@@ -56,6 +58,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not 0<length<=16000:raise ValueError('Request body is too large or empty.')
             body=json.loads(self.rfile.read(length))
             if not isinstance(body,dict):raise ValueError('Expected a JSON object.')
+            if self.path=='/api/experiments/assign':return self.send(200,experiments.assign(body.get('participant')))
+            if self.path=='/api/experiments/event':return self.send(200,experiments.event(body))
             if self.path=='/api/settings':return self.send(200,storage.save_settings(body))
             if self.path=='/api/jobs':
                 kind=body.get('kind','recommend')
@@ -71,6 +75,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8765);args=parser.parse_args();PORT=args.port
     storage.init()
+    experiments.init()
     threading.Thread(target=engine.background_loop,daemon=True).start()
     server=http.server.ThreadingHTTPServer(('127.0.0.1',PORT),Handler)
     print(f'Cnvrted community recommender: http://127.0.0.1:{PORT}',flush=True)

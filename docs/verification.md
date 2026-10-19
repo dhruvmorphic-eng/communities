@@ -41,3 +41,9 @@ Detailed non-secret check results are in [verification.json](verification.json).
 The catalog contains research candidates, many based on directory descriptions. Joining, private member activity, current eligibility and permission to promote were not tested. A 90/100 fit score is not a promise of access or customers. The app inspects a bounded number of pages per discovery pass; it does not claim exhaustive internet coverage. Pending same-name identity conflicts require editorial review, and the local server must remain running for optional daily refresh.
 
 The GitHub connection used for the initial push could not create workflow files because it lacks the `workflow` permission. The optional CI configuration is supplied as `checks.example.yml`; local checks above were executed successfully.
+
+## A/B harness — 2026-10-20
+
+40 automated tests pass, including independent stable treatment assignment, event deduplication, visitor denominators, invalid job/community attribution, aggregate-only reporting, rejection before provider work, basic fallback exclusion from ranking metrics, and the evidence-first prompt. JavaScript syntax and Git whitespace checks pass. The browser smoke test exercises the compact company form and the report with honest empty denominators. This verifies instrumentation; it does not establish an A/B winner. See [the experiment plan](ab-testing.md).
+
+A live cnvrted.com browser run completed under compact UI + evidence-first ranking: 12 recommendations from 148 candidates, one newly discovered community, and attributed started/analysis-ready/brief-confirmed/results-viewed/Useful events. The report showed one local QA visitor, not customer evidence. Some source refreshes failed and were visibly disclosed. Useful feedback saved successfully. The live run does not compare populations or establish lift.

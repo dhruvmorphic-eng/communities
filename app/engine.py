@@ -9,6 +9,7 @@ import threading
 import time
 import urllib.parse
 import storage
+import experiments
 from webfetch import company_pages, fetch_page, normalize_url, search_web, search_provider
 from intelligence import canonical, explain, extract_community, profile_company, retrieve, refine_profile, platform_key
 
@@ -187,9 +188,12 @@ def recommend(body,progress=lambda _:None):
     ranked,exclusions=retrieve(profile,storage.all_communities(),feedback)
     counts={key:sum(platform_key(x['record']['platform'])==key for x in ranked) for key in PLATFORMS if key!='all'}
     if platform!='all':ranked=[x for x in ranked if platform_key(x['record']['platform'])==platform]
-    recommendations=explain(profile,ranked,settings,limit)
+    assignment=experiments.assign(body['experiment_participant']) if body.get('experiment_participant') else None
+    if assignment and assignment['ranking']=='evidence_first':
+        recommendations=explain(profile,ranked,settings,limit,strategy='evidence_first')
+    else:recommendations=explain(profile,ranked,settings,limit)
     storage.save_profile(profile['domain'],profile,discovered=discovery['status'] in ['completed','cached'])
-    return {'kind':'recommendations','profile':profile,'recommendations':recommendations,'platform':platform,'platform_counts':counts,'catalog_matches':len(ranked),'warnings':warnings,'discovery':discovery,'refresh':refresh,'excluded':exclusions,'catalog':storage.stats(),'created_at':storage.now(),'coverage_note':f'{len(recommendations)} research candidates found. Eligibility and permission to promote must be checked before participating.','sources_read':sources}
+    return {'experiment':{**assignment,'ranking_applied':bool(settings.get('ai_key') and ranked)} if assignment else None,'kind':'recommendations','profile':profile,'recommendations':recommendations,'platform':platform,'platform_counts':counts,'catalog_matches':len(ranked),'warnings':warnings,'discovery':discovery,'refresh':refresh,'excluded':exclusions,'catalog':storage.stats(),'created_at':storage.now(),'coverage_note':f'{len(recommendations)} research candidates found. Eligibility and permission to promote must be checked before participating.','sources_read':sources}
 
 def run_job(jid,kind,body):
     def progress(stage):storage.update_job(jid,stage)
@@ -212,10 +216,16 @@ def run_job(jid,kind,body):
                 if r['status'] in ['completed','cached']:storage.save_profile(p['domain'],p,True)
             result={'runs':results,'catalog':storage.stats(),'message':'No saved company profiles to refresh.' if not profiles else 'Discovery pass finished. Run recommendations again to use updated candidates.'}
         else:raise ValueError('Unknown job type.')
+        result['job_id']=jid
+        if body.get('experiment_participant'):
+            result['experiment_participant']=experiments.identifier(body['experiment_participant'])
+            result['experiment_flow']=experiments.identifier(body.get('experiment_flow'))
         storage.update_job(jid,'Complete','completed',result=result)
     except Exception as e:storage.update_job(jid,'Stopped','failed',error=str(e)[:600])
 
 def submit(kind,body):
+    if body.get('experiment_participant'):
+        experiments.identifier(body['experiment_participant']);experiments.identifier(body.get('experiment_flow'))
     jid=storage.create_job(kind);WORKERS.submit(run_job,jid,kind,body);return jid
 
 def background_loop():

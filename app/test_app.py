@@ -275,4 +275,76 @@ class AppTests(unittest.TestCase):
         with patch('intelligence.model_json',return_value={'recommendations':[{'community_id':'invented','fit_reason':'Not from catalog.','fit_score':99}]}),self.assertRaises(ValueError):
             intelligence.explain(p,ranked,{'ai_key':'test'})
 
+
+class ExperimentTests(unittest.TestCase):
+    def setUp(self):
+        import experiments
+        self.exp=experiments
+        storage.init();experiments.init()
+        with storage.connection() as c:
+            c.execute('DELETE FROM experiment_events');c.execute('DELETE FROM experiment_participants')
+        self.person='visitor_1234567890123456';self.flow='flow_1234567890123456789'
+
+    def send(self,name,**extra):
+        return self.exp.event({'participant':self.person,'flow':self.flow,'event':name,**extra})
+
+    def result_job(self,applied=True):
+        jid=storage.create_job('recommend')
+        storage.update_job(jid,'Complete','completed',result={'kind':'recommendations','experiment_participant':self.person,'experiment_flow':self.flow,'experiment':{'ranking_applied':applied},'recommendations':[{'community_id':'real'}]})
+        return jid
+
+    def test_stable_independent_balanced_assignments(self):
+        pairs=[]
+        for i in range(400):
+            person=f'visitor_{i:016d}';a=self.exp.assign(person)
+            self.assertEqual(a,self.exp.assign(person));pairs.append((a['ui'],a['ranking']))
+        from collections import Counter
+        self.assertEqual(len(Counter(pairs)),4)
+        self.assertTrue(all(60<n<140 for n in Counter(pairs).values()))
+
+    def test_event_dedup_and_visitor_denominators(self):
+        self.send('started');self.send('started');jid=self.result_job()
+        for _ in range(3):
+            self.send('results_viewed',job_id=jid);self.send('useful',job_id=jid,community_id='real')
+        a=self.exp.assign(self.person);report=self.exp.report()['results']
+        self.assertEqual(report['ui'][a['ui']]['participants'],1)
+        self.assertEqual(report['ranking'][a['ranking']]['rates']['useful'],1)
+        with storage.connection() as c:self.assertEqual(c.execute('SELECT count(*) FROM experiment_events').fetchone()[0],3)
+
+    def test_invalid_exposure_and_unshown_community_rejected(self):
+        with self.assertRaises(ValueError):self.send('results_viewed',job_id='missing')
+        jid=self.result_job()
+        with self.assertRaises(ValueError):self.send('community_clicked',job_id=jid,community_id='invented')
+        with self.assertRaises(ValueError):self.exp.event({'participant':'other_1234567890123456','flow':self.flow,'event':'results_viewed','job_id':jid})
+        with self.assertRaises(ValueError):self.send('brief_confirmed',job_id=jid)
+
+    def test_basic_results_count_for_ui_but_not_ranking(self):
+        self.send('started');jid=self.result_job(False);self.send('results_viewed',job_id=jid)
+        a=self.exp.assign(self.person);r=self.exp.report()['results']
+        self.assertEqual(r['ui'][a['ui']]['rates']['results_viewed'],1)
+        self.assertEqual(r['ranking'][a['ranking']]['participants'],0)
+        self.assertIsNone(r['ranking'][a['ranking']]['rates']['useful'])
+
+    def test_invalid_identifiers_and_event_names_rejected(self):
+        for value in ['short','https://example.org',None]:
+            with self.assertRaises(ValueError):self.exp.assign(value)
+        with self.assertRaises(ValueError):self.send('made_up')
+
+    def test_invalid_job_experiment_is_rejected_before_work(self):
+        with patch('engine.WORKERS.submit') as submit:
+            with self.assertRaises(ValueError):engine.submit('recommend',{'experiment_participant':self.person,'experiment_flow':'invalid'})
+            submit.assert_not_called()
+
+    def test_report_is_aggregate_without_identifiers(self):
+        self.send('started');text=json.dumps(self.exp.report())
+        self.assertNotIn(self.person,text);self.assertNotIn(self.flow,text)
+
+    def test_treatment_changes_prompt_without_changing_candidates(self):
+        profile={'buyer_topics':['agriculture'],'practitioner_topics':[],'offer':'crop planning','buyer_description':'farmers','keywords':['farm'],'goal':'customers'}
+        ranked,_=intelligence.retrieve(profile,storage.all_communities(),{})
+        with patch('intelligence.model_json',return_value={'recommendations':[]}) as mock:
+            intelligence.explain(profile,ranked,{'ai_key':'test'},strategy='evidence_first')
+            self.assertIn('Evidence-first treatment',mock.call_args.args[1])
+            self.assertTrue(mock.call_args.args[2]['candidates'])
+
 if __name__=='__main__':unittest.main()
