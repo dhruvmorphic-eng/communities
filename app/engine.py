@@ -10,6 +10,7 @@ import time
 import urllib.parse
 import storage
 import experiments
+import hosting
 from webfetch import company_pages, fetch_page, normalize_url, search_web, search_provider
 from intelligence import canonical, explain, extract_community, profile_company, retrieve, refine_profile, platform_key
 
@@ -150,7 +151,7 @@ def analyze_company(body,progress=lambda _:None):
     progress('Understanding your offer and target buyers')
     # Fail visibly if a configured AI provider fails. Do not silently fake AI output.
     profile,profile_warnings=profile_company(docs,goal,context,settings);warnings+=profile_warnings
-    storage.save_profile(profile['domain'],profile)
+    storage.save_profile(hosting.scope(profile['domain'],body.get('_owner')),profile)
     return {'kind':'analysis','profile':profile,'warnings':warnings,'sources_read':[{'url':d['url'],'title':d['title'],'method':d['method']} for d in docs]}
 
 PLATFORMS=['all','slack','discord','reddit','facebook','linkedin','whatsapp','telegram','forums','other']
@@ -161,6 +162,7 @@ def recommend(body,progress=lambda _:None):
     limit=body.get('limit',18)
     if isinstance(limit,bool) or not isinstance(limit,int) or not 1<=limit<=24:raise ValueError('Choose between 1 and 24 recommendations.')
     if body.get('analysis_id'):
+        if body.get('_owner') and not hosting.owns(str(body['analysis_id']),body['_owner']):raise ValueError('Analyze your website in this browser before finding communities.')
         analysis=storage.get_job(str(body['analysis_id']))
         if not analysis or analysis['status']!='completed' or (analysis.get('result') or {}).get('kind')!='analysis':raise ValueError('Analyze your website before finding communities.')
         analysis=analysis['result'];goal=body.get('goal',analysis['profile']['goal'])
@@ -170,7 +172,7 @@ def recommend(body,progress=lambda _:None):
         warnings=list(analysis.get('warnings',[]));sources=analysis['sources_read']
     else:
         analysis=analyze_company(body,progress);profile=analysis['profile'];warnings=analysis['warnings'];sources=analysis['sources_read']
-    storage.save_profile(profile['domain'],profile)
+    storage.save_profile(hosting.scope(profile['domain'],body.get('_owner')),profile)
     discovery_profile={**profile}
     queries=profile.get('search_queries',[])[:2] or [profile['buyer_description'][:130]+' professional community join']
     if platform!='all':queries=[q+' '+('professional forum' if platform=='forums' else platform)+' community join' for q in queries]
@@ -178,7 +180,7 @@ def recommend(body,progress=lambda _:None):
     discovery=discover(discovery_profile,settings,force=body.get('force_discovery') is True,progress=progress)
     if discovery['status']=='unconfigured':warnings.append(discovery['message'])
     if discovery['status']=='failed':warnings.append('Live discovery failed. Existing catalog candidates are still available; inspect the research log.')
-    feedback=storage.feedback_for(profile['domain'])
+    feedback=storage.feedback_for(hosting.scope(profile['domain'],body.get('_owner')))
     ranked,exclusions=retrieve(profile,storage.all_communities(),feedback)
     counts={key:sum(platform_key(x['record']['platform'])==key for x in ranked) for key in PLATFORMS if key!='all'}
     if platform!='all':ranked=[x for x in ranked if platform_key(x['record']['platform'])==platform]
@@ -192,7 +194,7 @@ def recommend(body,progress=lambda _:None):
     if assignment and assignment['ranking']=='evidence_first':
         recommendations=explain(profile,ranked,settings,limit,strategy='evidence_first')
     else:recommendations=explain(profile,ranked,settings,limit)
-    storage.save_profile(profile['domain'],profile,discovered=discovery['status'] in ['completed','cached'])
+    storage.save_profile(hosting.scope(profile['domain'],body.get('_owner')),profile,discovered=discovery['status'] in ['completed','cached'])
     return {'experiment':{**assignment,'ranking_applied':bool(settings.get('ai_key') and ranked)} if assignment else None,'kind':'recommendations','profile':profile,'recommendations':recommendations,'platform':platform,'platform_counts':counts,'catalog_matches':len(ranked),'warnings':warnings,'discovery':discovery,'refresh':refresh,'excluded':exclusions,'catalog':storage.stats(),'created_at':storage.now(),'coverage_note':f'{len(recommendations)} research candidates found. Eligibility and permission to promote must be checked before participating.','sources_read':sources}
 
 def run_job(jid,kind,body):
@@ -226,7 +228,10 @@ def run_job(jid,kind,body):
 def submit(kind,body):
     if body.get('experiment_participant'):
         experiments.identifier(body['experiment_participant']);experiments.identifier(body.get('experiment_flow'))
-    jid=storage.create_job(kind);WORKERS.submit(run_job,jid,kind,body);return jid
+    with storage.LOCK:
+        jid=storage.create_job(kind)
+        if body.get('_owner'):hosting.own(jid,body['_owner'])
+    WORKERS.submit(run_job,jid,kind,body);return jid
 
 def background_loop():
     # This is app functionality, not a system cron or a Codex automation.

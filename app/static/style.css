@@ -3,3 +3,5 @@
 pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font:11px/1.5 monospace}
 
 #experiments{width:min(760px,calc(100vw - 32px))}#experiment-report{overflow-x:auto}#experiment-report table{border-collapse:collapse;width:100%;font:12px/1.4 Arial,sans-serif;margin:15px 0 25px}#experiment-report th,#experiment-report td{border-bottom:1px solid #ddd;text-align:left;padding:9px 6px;vertical-align:top}
+
+.beta-note{max-width:850px;margin:40px auto 0;padding:0 18px}

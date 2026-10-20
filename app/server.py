@@ -4,11 +4,14 @@ import argparse
 import http.server
 import json
 import secrets
+import os
+import hmac
 import threading
 import urllib.parse
 import storage
 import engine
 import experiments
+import hosting
 from webfetch import request
 
 TOKEN=secrets.token_urlsafe(32)
@@ -17,31 +20,51 @@ STATIC=storage.ROOT/'static'
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self,*args):pass
+    def setup(self):
+        super().setup();self.connection.settimeout(20)
+    def identity(self):
+        if not hasattr(self,'sid'):self.sid,self.new_session=hosting.session(self.headers.get('Cookie'))
+        return self.sid
+    def admin(self):
+        return not hosting.enabled() or hmac.compare_digest(self.headers.get('X-Admin-Token',''),os.environ.get('ADMIN_TOKEN','invalid'))
+    def origin(self):return os.environ.get('PUBLIC_URL','').rstrip('/') if hosting.enabled() else f'http://{self.headers.get("Host")}'
+
     def send(self,status,data,kind='application/json'):
         content=json.dumps(data).encode() if kind=='application/json' else data
         self.send_response(status)
         self.send_header('Content-Type',kind+'; charset=utf-8')
         self.send_header('Content-Length',str(len(content)))
+        if hosting.enabled():
+            self.identity()
+            if self.new_session:self.send_header('Set-Cookie','cnvrted_session='+hosting.cookie(self.sid)+'; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000')
+            self.send_header('Strict-Transport-Security','max-age=31536000')
         self.send_header('Cache-Control','no-store')
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Referrer-Policy','no-referrer')
         self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
         self.end_headers();self.wfile.write(content)
     def valid_host(self):
+        if hosting.enabled():return self.headers.get('Host')==urllib.parse.urlsplit(self.origin()).netloc
         return self.headers.get('Host') in [f'127.0.0.1:{PORT}',f'localhost:{PORT}']
     def do_GET(self):
+        if self.path=='/health':return self.send(200,{'status':'ok'})
         if not self.valid_host():return self.send(403,{'error':'Invalid host.'})
+        if hosting.enabled() and self.headers.get('X-Admin-Token') and self.admin():experiments.mark_internal(self.identity())
         parsed=urllib.parse.urlsplit(self.path);path=parsed.path
         try:
-            if path=='/api/experiments':return self.send(200,experiments.report())
-            if path=='/api/status':return self.send(200,{'csrf_token':TOKEN,'settings':storage.public_settings(),'catalog':storage.stats()})
+            if path=='/health':return self.send(200,{'status':'ok'})
+            if path=='/api/experiments':return self.send(200,experiments.report()) if self.admin() else self.send(401,{'error':'Owner access is required for the experiment report.'})
+            if path=='/api/status':return self.send(200,{'csrf_token':hosting.csrf(self.identity()) if hosting.enabled() else TOKEN,'hosted':hosting.enabled(),'participant':self.identity() if hosting.enabled() else None,'settings':storage.public_settings(),'catalog':storage.stats()})
             if path.startswith('/api/jobs/'):
-                job=storage.get_job(path.rsplit('/',1)[-1]);return self.send(200 if job else 404,job or {'error':'Job not found.'})
+                jid=path.rsplit('/',1)[-1]
+                if hosting.enabled() and not hosting.owns(jid,self.identity()):return self.send(404,{'error':'Job not found.'})
+                job=storage.get_job(jid);return self.send(200 if job else 404,job or {'error':'Job not found.'})
             if path=='/api/catalog':
                 q=urllib.parse.parse_qs(parsed.query).get('q',[''])[0].lower()
                 rows=[{k:r.get(k) for k in ['community_id','name','source_url','topics','cost_status','evidence_status']} for r in storage.all_communities() if q in (r['name']+' '+' '.join(r['topics'])).lower()]
                 return self.send(200,{'total':len(rows),'records':rows[:50]})
             if path=='/api/models':
+                if hosting.enabled():return self.send(404,{'error':'Not found.'})
                 d,_,_=request('https://ai-gateway.vercel.sh/v1/models',limit=2_000_000)
                 return self.send(200,{'ids':[x['id'] for x in json.loads(d)['data']]})
             files={'/':('index.html','text/html'),'/app.js':('app.js','application/javascript'),'/style.css':('style.css','text/css'),'/assets/slack.svg':('assets/slack.svg','image/svg+xml'),'/assets/discord.svg':('assets/discord.svg','image/svg+xml')}
@@ -50,33 +73,51 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send(404,{'error':'Not found.'})
         except Exception as e:return self.send(400,{'error':str(e)[:500]})
     def do_POST(self):
-        if not self.valid_host() or self.headers.get('X-CSRF-Token')!=TOKEN:return self.send(403,{'error':'Refresh the app before submitting.'})
+        expected=hosting.csrf(self.identity()) if hosting.enabled() else TOKEN
+        if not self.valid_host() or not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),expected):return self.send(403,{'error':'Refresh the app before submitting.'})
         origin=self.headers.get('Origin')
-        if origin and origin not in [f'http://127.0.0.1:{PORT}',f'http://localhost:{PORT}']:return self.send(403,{'error':'Invalid origin.'})
+        if origin and origin not in ([self.origin()] if hosting.enabled() else [f'http://127.0.0.1:{PORT}',f'http://localhost:{PORT}']):return self.send(403,{'error':'Invalid origin.'})
         try:
             length=int(self.headers.get('Content-Length','0'))
             if not 0<length<=16000:raise ValueError('Request body is too large or empty.')
             body=json.loads(self.rfile.read(length))
             if not isinstance(body,dict):raise ValueError('Expected a JSON object.')
+            if hosting.enabled():
+                if self.headers.get('X-Admin-Token') and self.admin():experiments.mark_internal(self.identity())
+                body['participant']=self.identity()
+                if self.path=='/api/settings':return self.send(403,{'error':'Hosted settings are managed by the owner.'})
             if self.path=='/api/experiments/assign':return self.send(200,experiments.assign(body.get('participant')))
             if self.path=='/api/experiments/event':return self.send(200,experiments.event(body))
             if self.path=='/api/settings':return self.send(200,storage.save_settings(body))
             if self.path=='/api/jobs':
                 kind=body.get('kind','recommend')
                 if kind not in ['analyze','recommend','add','refresh']:raise ValueError('Unknown job type.')
-                return self.send(202,{'job_id':engine.submit(kind,body)})
+                with storage.LOCK:
+                    if hosting.enabled():
+                        hosting.allow_job(self.identity(),self.headers.get('X-Forwarded-For',self.client_address[0]).split(',')[-1].strip(),kind)
+                        body['_owner']=self.identity();body['experiment_participant']=self.identity()
+                    else:body.pop('_owner',None)
+                    jid=engine.submit(kind,body)
+                return self.send(202,{'job_id':jid})
             if self.path=='/api/feedback':
                 domain=str(body.get('domain',''))[:250];cid=str(body.get('community_id',''))[:100]
                 if not domain or not cid:raise ValueError('Missing company or community.')
+                if hosting.enabled():
+                    jid=str(body.get('job_id',''))
+                    if not hosting.owns(jid,self.identity()):return self.send(404,{'error':'Job not found.'})
+                    result=(storage.get_job(jid) or {}).get('result') or {}
+                    if (result.get('profile') or {}).get('domain')!=domain or cid not in {r['community_id'] for r in result.get('recommendations',[])}:raise ValueError('Feedback must refer to your recommendations.')
+                    domain=hosting.scope(domain,self.identity())
                 storage.feedback(domain,cid,body.get('value'));return self.send(200,{'saved':True})
             return self.send(404,{'error':'Not found.'})
         except Exception as e:return self.send(400,{'error':str(e)[:500]})
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8765);args=parser.parse_args();PORT=args.port
+    parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=int(os.environ.get('PORT','8765')));args=parser.parse_args();PORT=args.port
     storage.init()
     experiments.init()
-    threading.Thread(target=engine.background_loop,daemon=True).start()
-    server=http.server.ThreadingHTTPServer(('127.0.0.1',PORT),Handler)
+    hosting.init()
+    if not hosting.enabled():threading.Thread(target=engine.background_loop,daemon=True).start()
+    server=http.server.ThreadingHTTPServer(('0.0.0.0' if hosting.enabled() else '127.0.0.1',PORT),Handler)
     print(f'Cnvrted community recommender: http://127.0.0.1:{PORT}',flush=True)
     server.serve_forever()

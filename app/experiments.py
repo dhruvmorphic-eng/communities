@@ -8,7 +8,8 @@ EVENTS={'started','analysis_ready','brief_confirmed','results_viewed','community
 
 def init():
     with storage.connection() as c:
-        c.executescript('''CREATE TABLE IF NOT EXISTS experiment_participants(id TEXT PRIMARY KEY, version TEXT, ui TEXT, ranking TEXT, created_at TEXT);
+        c.executescript('''CREATE TABLE IF NOT EXISTS experiment_internal(participant TEXT PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS experiment_participants(id TEXT PRIMARY KEY, version TEXT, ui TEXT, ranking TEXT, created_at TEXT);
         CREATE TABLE IF NOT EXISTS experiment_events(id TEXT PRIMARY KEY, participant TEXT, version TEXT, ui TEXT, ranking TEXT, flow TEXT, event TEXT, job TEXT, community TEXT, created_at TEXT);''')
 
 def identifier(value):
@@ -43,9 +44,12 @@ def event(body):
         c.execute('INSERT OR IGNORE INTO experiment_events VALUES(?,?,?,?,?,?,?,?,?,?)',(key,participant,VERSION,assignment['ui'],assignment['ranking'],flow,name,job_id,cid,storage.now()))
     return {'saved':True}
 
+def mark_internal(participant):
+    with storage.connection() as c:c.execute('INSERT OR IGNORE INTO experiment_internal VALUES(?)',(participant,))
+
 def report():
     with storage.connection() as c:
-        rows=[dict(r) for r in c.execute('SELECT participant,ui,ranking,event FROM experiment_events WHERE version=?',(VERSION,))]
+        rows=[dict(r) for r in c.execute('SELECT participant,ui,ranking,event FROM experiment_events WHERE version=? AND participant NOT IN (SELECT participant FROM experiment_internal)',(VERSION,))]
     output={}
     for dimension,variants,denominator in [('ui',['full','compact'],'started'),('ranking',['balanced','evidence_first'],'results_viewed')]:
         output[dimension]={}
@@ -53,4 +57,4 @@ def report():
             exposed={r['participant'] for r in rows if r[dimension]==variant and r['event']==denominator}
             counts={name:len({r['participant'] for r in rows if r[dimension]==variant and r['event']==name}&exposed) for name in EVENTS}
             output[dimension][variant]={'participants':len(exposed),'unique_participants_by_event':counts,'rates':{name:round(counts[name]/len(exposed),4) if exposed else None for name in ['results_viewed','community_clicked','useful','irrelevant','failed']}}
-    return {'version':VERSION,'results':output,'note':'Descriptive counts only; no winner or statistical significance. UI denominator: visitors starting a scan. Ranking denominator: visitors viewing AI-ranked results. Clicks are interest, not joins or sales. Repeat events count once per visitor. Local testing is not customer evidence. Browser storage reset creates a new visitor. No cross-device identity.'}
+    return {'version':VERSION,'results':output,'note':'Descriptive counts only; no winner or statistical significance. UI denominator: visitors starting a scan. Ranking denominator: visitors viewing AI-ranked results. Clicks are interest, not joins or sales. Repeat events count once per visitor. Owner QA sessions are excluded. Local testing is not customer evidence. Browser storage reset creates a new visitor. No cross-device identity.'}

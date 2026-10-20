@@ -1,0 +1,6 @@
+.git
+app/data
+**/__pycache__
+.env*
+.deployment*
+docs

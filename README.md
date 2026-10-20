@@ -78,4 +78,4 @@ Live checks and screenshots are recorded in [docs/verification.md](docs/verifica
 - `app/static/`: three-step UI and locally served platform logos.
 - `communities.json`, `taxonomy.json`: portable public seed catalog.
 
-This is a single-user local prototype. Public deployment requires authentication, per-user isolation, managed workers and suitable secret storage.
+Local mode is for one user. A small hosted beta mode adds signed anonymous sessions, private job access, isolated feedback, owner-only reporting and daily usage caps. See [deployment details](docs/deployment.md). Account login, distributed workers and multi-replica scaling remain outside this beta.
